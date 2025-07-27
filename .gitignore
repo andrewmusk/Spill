@@ -1,0 +1,14 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+infra/terraform.tfvars
+
+
+# Python
+__pycache__/
+.env
+
+# Node/Frontend (if added later)
+node_modules/
+dist/

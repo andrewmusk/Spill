@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: spill-pg-dev
+    environment:
+      POSTGRES_USER: spill_app       # same user as prod
+      POSTGRES_PASSWORD: devpass     # DEV-ONLY password
+      POSTGRES_DB: spill_dev         # keep prod (spill) separate
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
