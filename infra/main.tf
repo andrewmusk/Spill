@@ -7,11 +7,6 @@ terraform {
       version = "~> 5.0"
     }
   }
-
-  backend "gcs" {
-    bucket = "${var.project_id}-tf-state"   # create this bucket once
-    prefix = "state"
-  }
 }
 
 provider "google" {
@@ -23,12 +18,12 @@ provider "google" {
 #  Storage bucket for media
 # ----------------------------
 resource "google_storage_bucket" "media" {
-  name                         = "${var.project_id}-media"
-  location                     = var.region
-  uniform_bucket_level_access  = true
+  name                        = "spill-media-prod"
+  location                    = var.region
+  uniform_bucket_level_access = true
   lifecycle_rule {
     condition { age = 30 }
-    action    { type = "Delete" }
+    action { type = "Delete" }
   }
 }
 
@@ -36,8 +31,11 @@ resource "google_storage_bucket" "media" {
 #  Secret holding DB password
 # ----------------------------
 resource "google_secret_manager_secret" "db_password" {
-  secret_id   = "db-pass"
-  replication { automatic = true }
+  secret_id = "db-pass"
+
+  replication {
+    auto {}
+  }
 }
 
 resource "google_secret_manager_secret_version" "db_password_version" {
@@ -54,23 +52,25 @@ resource "google_service_account" "backend" {
 }
 
 resource "google_project_iam_member" "sa_sql_client" {
-  role   = "roles/cloudsql.client"
-  member = "serviceAccount:${google_service_account.backend.email}"
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.backend.email}"
 }
 
 resource "google_project_iam_member" "sa_secret_accessor" {
-  role   = "roles/secretmanager.secretAccessor"
-  member = "serviceAccount:${google_service_account.backend.email}"
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.backend.email}"
 }
 
 # ----------------------------
 #  Artifact Registry repo
 # ----------------------------
 resource "google_artifact_registry_repository" "containers" {
-  location       = var.region
-  repository_id  = "containers"
-  format         = "DOCKER"
-  description    = "Container images for Spill"
+  location      = var.region
+  repository_id = "containers"
+  format        = "DOCKER"
+  description   = "Container images for Spill"
 }
 
 # ----------------------------
@@ -84,7 +84,7 @@ resource "google_sql_database_instance" "postgres" {
   settings {
     tier = "db-f1-micro"
     ip_configuration {
-      ipv4_enabled    = false         # use Cloud Run socket
+      ipv4_enabled = false # use Cloud Run socket
     }
     deletion_protection_enabled = false
   }
@@ -126,13 +126,8 @@ resource "google_cloud_run_service" "backend" {
           value = google_sql_database.app.name
         }
         env {
-          name = "DB_PASS"
-          value_source {
-            secret_key_ref {
-              name = google_secret_manager_secret.db_password.secret_id
-              key  = "latest"
-            }
-          }
+          name  = "DB_PASS"
+          value = var.db_password
         }
       }
       service_account_name = google_service_account.backend.email
@@ -145,7 +140,7 @@ resource "google_cloud_run_service" "backend" {
     }
   }
 
-  traffics {
+  traffic {
     percent         = 100
     latest_revision = true
   }
