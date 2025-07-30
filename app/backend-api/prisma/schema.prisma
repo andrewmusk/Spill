@@ -14,9 +14,193 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Enums
+enum PollVisibility {
+  PUBLIC      // anyone
+  FOLLOWERS   // viewer follows owner
+  MUTUALS     // both follow each other
+}
+
+enum SelectionType {
+  SINGLE      // pick one option
+  MULTIPLE    // pick N options (maxSelections)
+}
+
+// User Model
 model User {
-  id          BigInt   @id @default(autoincrement())
+  id          String   @id @default(cuid())
   handle      String   @unique
   displayName String?
+  isPrivate   Boolean  @default(false)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Owned polls
+  polls Poll[]
+
+  // Voting relationships
+  votes           Vote[]
+  sliderResponses SliderResponse[]
+  skippedPolls    SkippedPoll[]
+
+  // Social graph - following relationships
+  followers Follow[] @relation("UserFollows")
+  following Follow[] @relation("UserFollowing")
+
+  // Social graph - blocking relationships
+  blockers Block[] @relation("UserBlocks")
+  blocked  Block[] @relation("UserBlocked")
+
+  // Social graph - muting relationships
+  muters Mute[] @relation("UserMutes")
+  muted  Mute[] @relation("UserMuted")
+}
+
+// Poll Model
+model Poll {
+  id            String          @id @default(cuid())
+  ownerId       String
+  question      String
+  isContinuous  Boolean         @default(false)
+  selectionType SelectionType?  // only for discrete polls
+  maxSelections Int?            // multi-select limit
+  minValue      Float?          // continuous polls
+  maxValue      Float?
+  step          Float?
+  visibility    PollVisibility  @default(PUBLIC)
+  expiresAt     DateTime?
+  mediaUrls     String[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relationships
+  owner           User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  options         PollOption[]
+  votes           Vote[]
+  sliderResponses SliderResponse[]
+  skippedBy       SkippedPoll[]
+
+  // Indexes for performance
+  @@index([ownerId])
+  @@index([visibility])
+  @@index([createdAt])
+  @@index([expiresAt])
+}
+
+// Poll Options (for discrete polls)
+model PollOption {
+  id       String @id @default(cuid())
+  pollId   String
+  text     String
+  position Int
+
+  // Relationships
+  poll  Poll   @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes Vote[]
+
+  @@index([pollId])
+  @@index([pollId, position])
+}
+
+// Votes (for discrete polls)
+model Vote {
+  id       String   @id @default(cuid())
+  pollId   String
+  voterId  String
+  optionId String
+  createdAt DateTime @default(now())
+
+  // Relationships
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  voter  User       @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  // Constraints and indexes
+  @@unique([pollId, voterId, optionId])
+  @@index([pollId])
+  @@index([voterId])
+  @@index([optionId])
+}
+
+// Slider Responses (for continuous polls)
+model SliderResponse {
+  id        String   @id @default(cuid())
+  pollId    String
+  userId    String
+  value     Float
+  createdAt DateTime @default(now())
+
+  // Relationships
+  poll Poll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Constraints and indexes
+  @@unique([pollId, userId])
+  @@index([pollId])
+  @@index([userId])
+}
+
+// Skipped Polls (to avoid showing the same poll again)
+model SkippedPoll {
+  id        String   @id @default(cuid())
+  userId    String
+  pollId    String
+  createdAt DateTime @default(now())
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  poll Poll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  // Constraints and indexes
+  @@unique([userId, pollId])
+  @@index([userId])
+  @@index([pollId])
+}
+
+// Social Graph - Follow relationships (accepted follows only)
+model Follow {
+  followerId String
+  followeeId String
+  createdAt  DateTime @default(now())
+
+  // Relationships
+  follower User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  followee User @relation("UserFollows", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  // Composite primary key
+  @@id([followerId, followeeId])
+  @@index([followerId])
+  @@index([followeeId])
+}
+
+// Social Graph - Block relationships
+model Block {
+  blockerId String
+  blockedId String
+  blockedAt DateTime @default(now())
+
+  // Relationships
+  blocker User @relation("UserBlocked", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("UserBlocks", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  // Composite primary key
+  @@id([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+}
+
+// Social Graph - Mute relationships
+model Mute {
+  muterId String
+  mutedId String
+  mutedAt DateTime @default(now())
+
+  // Relationships
+  muter User @relation("UserMuted", fields: [muterId], references: [id], onDelete: Cascade)
+  muted User @relation("UserMutes", fields: [mutedId], references: [id], onDelete: Cascade)
+
+  // Composite primary key
+  @@id([muterId, mutedId])
+  @@index([muterId])
+  @@index([mutedId])
 }
