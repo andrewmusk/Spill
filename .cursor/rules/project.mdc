@@ -1,0 +1,44 @@
+---
+alwaysApply: true
+---
+# Spill Project Rules
+
+## Project Overview
+Spill is a full-stack application with:
+- Backend API (Node.js/Express)
+- Database (PostgreSQL with Prisma ORM)
+- Infrastructure (Terraform)
+- Docker containerization
+
+## Architecture
+- `app/backend-api/` - Main backend application
+- `infra/` - Terraform infrastructure code
+- `scripts/` - Deployment and utility scripts
+- `docker-compose.yml` - Local development setup
+
+## Key Technologies
+- **Backend**: Node.js, Express, Prisma
+- **Database**: PostgreSQL
+- **Infrastructure**: Terraform
+- **Containerization**: Docker
+- **Package Management**: npm
+
+## Development Guidelines
+- Use Prisma for database operations
+- Follow RESTful API conventions
+- Implement proper error handling
+- Use environment variables for configuration
+- Write clear commit messages
+- Document API endpoints
+
+## File Structure Conventions
+- Keep backend logic in `app/backend-api/`
+- Store database migrations in `app/backend-api/prisma/migrations/`
+- Place infrastructure code in `infra/`
+- Use descriptive script names in `scripts/`
+
+## Database
+- Use Prisma schema for database modeling
+- Run migrations for schema changes
+- Follow naming conventions for tables and fields
+- Use proper relationships between models 

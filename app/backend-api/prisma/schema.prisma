@@ -29,6 +29,7 @@ enum SelectionType {
 // User Model
 model User {
   id          String   @id @default(cuid())
+  clerkId     String   @unique // Clerk user identifier for authentication
   handle      String   @unique
   displayName String?
   isPrivate   Boolean  @default(false)
