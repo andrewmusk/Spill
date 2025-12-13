@@ -16,9 +16,9 @@ datasource db {
 
 // Enums
 enum PollVisibility {
-  PUBLIC      // anyone
-  FOLLOWERS   // viewer follows owner
-  MUTUALS     // both follow each other
+  PUBLIC       // anyone can view and vote
+  FRIENDS_ONLY // only mutual follows (friends) can view and vote
+  PRIVATE_LINK // only those with the link can view and vote
 }
 
 enum SelectionType {
@@ -26,15 +26,23 @@ enum SelectionType {
   MULTIPLE    // pick N options (maxSelections)
 }
 
+enum FollowRequestStatus {
+  PENDING   // awaiting response
+  ACCEPTED  // request accepted, follow created
+  REJECTED  // request rejected
+}
+
 // User Model
 model User {
-  id          String   @id @default(cuid())
-  clerkId     String   @unique // Clerk user identifier for authentication
-  handle      String   @unique
-  displayName String?
-  isPrivate   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  clerkId              String   @unique // Clerk user identifier for authentication
+  handle               String   @unique
+  displayName          String?
+  bio                  String?  // Bio for profile About section
+  isPrivate            Boolean  @default(false)
+  hideVotesFromFriends Boolean  @default(false) // Global setting to hide all votes from friends
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   // Owned polls
   polls Poll[]
@@ -48,6 +56,10 @@ model User {
   followers Follow[] @relation("UserFollows")
   following Follow[] @relation("UserFollowing")
 
+  // Social graph - follow requests (for private accounts)
+  followRequestsSent     FollowRequest[] @relation("UserFollowRequestsSent")
+  followRequestsReceived FollowRequest[] @relation("UserFollowRequestsReceived")
+
   // Social graph - blocking relationships
   blockers Block[] @relation("UserBlocks")
   blocked  Block[] @relation("UserBlocked")
@@ -59,20 +71,21 @@ model User {
 
 // Poll Model
 model Poll {
-  id            String          @id @default(cuid())
-  ownerId       String
-  question      String
-  isContinuous  Boolean         @default(false)
-  selectionType SelectionType?  // only for discrete polls
-  maxSelections Int?            // multi-select limit
-  minValue      Float?          // continuous polls
-  maxValue      Float?
-  step          Float?
-  visibility    PollVisibility  @default(PUBLIC)
-  expiresAt     DateTime?
-  mediaUrls     String[]
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  ownerId          String
+  question         String
+  isContinuous     Boolean         @default(false)
+  selectionType    SelectionType?  // only for discrete polls
+  maxSelections    Int?            // multi-select limit
+  minValue         Float?          // continuous polls
+  maxValue         Float?
+  step             Float?
+  visibility       PollVisibility  @default(PUBLIC)
+  privateLinkToken String?          @unique // Unique token for private link polls
+  expiresAt        DateTime?
+  mediaUrls        String[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   // Relationships
   owner           User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -86,6 +99,7 @@ model Poll {
   @@index([visibility])
   @@index([createdAt])
   @@index([expiresAt])
+  @@index([privateLinkToken])
 }
 
 // Poll Options (for discrete polls)
@@ -105,11 +119,16 @@ model PollOption {
 
 // Votes (for discrete polls)
 model Vote {
-  id       String   @id @default(cuid())
-  pollId   String
-  voterId  String
-  optionId String
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  pollId          String
+  voterId         String
+  optionId        String
+  isHidden        Boolean  @default(false) // Hide vote for this specific poll
+  isSharedPublicly Boolean @default(false) // Share vote publicly on profile/feed
+  publicComment   String?  // Optional comment when sharing publicly
+  flipFlopCount   Int      @default(0) // Track number of vote changes
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt // Track when vote was last changed
 
   // Relationships
   poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
@@ -121,15 +140,21 @@ model Vote {
   @@index([pollId])
   @@index([voterId])
   @@index([optionId])
+  @@index([isSharedPublicly])
 }
 
 // Slider Responses (for continuous polls)
 model SliderResponse {
-  id        String   @id @default(cuid())
-  pollId    String
-  userId    String
-  value     Float
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  pollId          String
+  userId          String
+  value           Float
+  isHidden        Boolean  @default(false) // Hide response for this specific poll
+  isSharedPublicly Boolean @default(false) // Share response publicly on profile/feed
+  publicComment   String?  // Optional comment when sharing publicly
+  flipFlopCount   Int      @default(0) // Track number of response changes
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt // Track when response was last changed
 
   // Relationships
   poll Poll @relation(fields: [pollId], references: [id], onDelete: Cascade)
@@ -139,6 +164,7 @@ model SliderResponse {
   @@unique([pollId, userId])
   @@index([pollId])
   @@index([userId])
+  @@index([isSharedPublicly])
 }
 
 // Skipped Polls (to avoid showing the same poll again)
@@ -204,4 +230,23 @@ model Mute {
   @@id([muterId, mutedId])
   @@index([muterId])
   @@index([mutedId])
+}
+
+// Social Graph - Follow Request relationships (for private accounts)
+model FollowRequest {
+  followerId  String              // User requesting to follow
+  followeeId  String              // User being followed (private account)
+  status      FollowRequestStatus @default(PENDING)
+  createdAt   DateTime            @default(now())
+  respondedAt DateTime?           // When the request was accepted/rejected
+
+  // Relationships
+  follower User @relation("UserFollowRequestsSent", fields: [followerId], references: [id], onDelete: Cascade)
+  followee User @relation("UserFollowRequestsReceived", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  // Composite primary key
+  @@id([followerId, followeeId])
+  @@index([followerId])
+  @@index([followeeId])
+  @@index([status])
 }

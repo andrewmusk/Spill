@@ -1,7 +1,11 @@
 import { prisma } from '../../lib/prisma.js';
 import { withErrorMapping, NotFoundError, ConflictError } from '../errors.js';
 import { SocialValidations } from '../../lib/validations/social.validations.js';
-import type { Follow, Block, Mute } from '../../../generated/prisma';
+import { UserRepository } from './user.repository.js';
+import type { Follow, Block, Mute, FollowRequest, FollowRequestStatus } from '../../../generated/prisma';
+
+// Create instance to avoid circular dependency
+const userRepository = new UserRepository();
 
 export interface FollowData {
   followerId: string;
@@ -18,9 +22,14 @@ export interface MuteData {
   mutedId: string;
 }
 
+export interface FollowRequestData {
+  followerId: string;
+  followeeId: string;
+}
+
 export class SocialRepository {
   // Follow operations
-  async follow(data: FollowData): Promise<Follow> {
+  async follow(data: FollowData): Promise<Follow | FollowRequest> {
     const { followerId, followeeId } = data;
     
     // Use centralized validation
@@ -38,6 +47,34 @@ export class SocialRepository {
       throw new ConflictError('Cannot follow a user who has blocked you');
     }
 
+    // Check if target account is private
+    const followee = await userRepository.findByIdOrThrow(followeeId);
+    if (followee.isPrivate) {
+      // Check if there's already a pending request
+      const existingRequest = await this.getFollowRequest(followerId, followeeId);
+      if (existingRequest) {
+        if (existingRequest.status === 'PENDING') {
+          throw new ConflictError('Follow request already pending');
+        }
+        if (existingRequest.status === 'ACCEPTED') {
+          throw new ConflictError('Follow request already accepted');
+        }
+        // If rejected, create a new request
+      }
+      
+      // Create follow request for private account
+      return withErrorMapping(() =>
+        prisma.followRequest.create({
+          data: {
+            followerId,
+            followeeId,
+            status: 'PENDING',
+          },
+        })
+      );
+    }
+
+    // Public account - follow directly
     return withErrorMapping(() =>
       prisma.follow.create({
         data,
@@ -381,5 +418,183 @@ export class SocialRepository {
     );
 
     return follows.map(follow => follow.followeeId);
+  }
+
+  // Follow Request operations (for private accounts)
+  async createFollowRequest(data: FollowRequestData): Promise<FollowRequest> {
+    const { followerId, followeeId } = data;
+    
+    SocialValidations.validateFollowData(followerId, followeeId);
+
+    // Check if already following
+    const existing = await this.isFollowing(followerId, followeeId);
+    if (existing) {
+      throw new ConflictError('Already following this user');
+    }
+
+    // Check if blocked
+    const isBlocked = await this.isBlocked(followeeId, followerId);
+    if (isBlocked) {
+      throw new ConflictError('Cannot follow a user who has blocked you');
+    }
+
+    // Verify target is private
+    const followee = await userRepository.findByIdOrThrow(followeeId);
+    if (!followee.isPrivate) {
+      throw new ConflictError('Cannot create follow request for public account');
+    }
+
+    // Check for existing request
+    const existingRequest = await this.getFollowRequest(followerId, followeeId);
+    if (existingRequest) {
+      if (existingRequest.status === 'PENDING') {
+        throw new ConflictError('Follow request already pending');
+      }
+      if (existingRequest.status === 'ACCEPTED') {
+        throw new ConflictError('Follow request already accepted');
+      }
+    }
+
+    return withErrorMapping(() =>
+      prisma.followRequest.upsert({
+        where: {
+          followerId_followeeId: {
+            followerId,
+            followeeId,
+          },
+        },
+        update: {
+          status: 'PENDING',
+          createdAt: new Date(),
+          respondedAt: null,
+        },
+        create: {
+          ...data,
+          status: 'PENDING',
+        },
+      })
+    );
+  }
+
+  async acceptFollowRequest(followerId: string, followeeId: string): Promise<Follow> {
+    // Verify the request exists and is pending
+    const request = await this.getFollowRequest(followerId, followeeId);
+    if (!request) {
+      throw new NotFoundError('FollowRequest', `${followerId}-${followeeId}`);
+    }
+    if (request.status !== 'PENDING') {
+      throw new ConflictError(`Follow request is not pending (status: ${request.status})`);
+    }
+
+    // Verify followee is the one accepting (they own the private account)
+    const followee = await userRepository.findByIdOrThrow(followeeId);
+    if (!followee.isPrivate) {
+      throw new ConflictError('Cannot accept follow request for public account');
+    }
+
+    // Create follow relationship and update request status in a transaction
+    return withErrorMapping(async () => {
+      return prisma.$transaction(async (tx) => {
+        // Create the follow
+        const follow = await tx.follow.create({
+          data: {
+            followerId,
+            followeeId,
+          },
+        });
+
+        // Update request status
+        await tx.followRequest.update({
+          where: {
+            followerId_followeeId: {
+              followerId,
+              followeeId,
+            },
+          },
+          data: {
+            status: 'ACCEPTED',
+            respondedAt: new Date(),
+          },
+        });
+
+        return follow;
+      });
+    });
+  }
+
+  async rejectFollowRequest(followerId: string, followeeId: string): Promise<void> {
+    // Verify the request exists and is pending
+    const request = await this.getFollowRequest(followerId, followeeId);
+    if (!request) {
+      throw new NotFoundError('FollowRequest', `${followerId}-${followeeId}`);
+    }
+    if (request.status !== 'PENDING') {
+      throw new ConflictError(`Follow request is not pending (status: ${request.status})`);
+    }
+
+    await withErrorMapping(() =>
+      prisma.followRequest.update({
+        where: {
+          followerId_followeeId: {
+            followerId,
+            followeeId,
+          },
+        },
+        data: {
+          status: 'REJECTED',
+          respondedAt: new Date(),
+        },
+      })
+    );
+  }
+
+  async getFollowRequest(followerId: string, followeeId: string): Promise<FollowRequest | null> {
+    return withErrorMapping(() =>
+      prisma.followRequest.findUnique({
+        where: {
+          followerId_followeeId: {
+            followerId,
+            followeeId,
+          },
+        },
+      })
+    );
+  }
+
+  async getPendingFollowRequests(
+    userId: string,
+    cursor?: string,
+    limit = 20
+  ): Promise<FollowRequest[]> {
+    // For composite key pagination, we'll use createdAt as cursor
+    const cursorDate = cursor ? new Date(cursor) : undefined;
+    
+    return withErrorMapping(() =>
+      prisma.followRequest.findMany({
+        where: {
+          followeeId: userId, // Requests received by this user
+          status: 'PENDING',
+          ...(cursorDate && {
+            createdAt: { lt: cursorDate },
+          }),
+        },
+        include: {
+          follower: {
+            select: {
+              id: true,
+              handle: true,
+              displayName: true,
+            },
+          },
+        },
+        take: limit + 1, // Take one extra to check if there are more
+        orderBy: { createdAt: 'desc' },
+      })
+    );
+  }
+
+  async hasPendingFollowRequest(followerId: string, followeeId: string): Promise<boolean> {
+    const request = await this.getFollowRequest(followerId, followeeId);
+    return request?.status === 'PENDING' || false;
   }
 } 

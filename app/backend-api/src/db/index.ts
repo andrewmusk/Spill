@@ -35,6 +35,7 @@ export type {
 
 export type {
   FollowData,
+  FollowRequestData,
   BlockData,
   MuteData,
 } from './repositories/social.repository.js'; 

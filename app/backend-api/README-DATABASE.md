@@ -17,14 +17,14 @@ The database layer follows a clean architecture with:
 
 #### User
 - **Purpose**: Manages user accounts and profiles
-- **Key Fields**: `id`, `handle`, `displayName`, `isPrivate`
-- **Features**: Unique handles, private/public accounts
+- **Key Fields**: `id`, `handle`, `displayName`, `isPrivate`, `bio`, `hideVotesFromFriends`
+- **Features**: Unique handles, private/public accounts, profile bio, vote visibility controls
 
 #### Poll
 - **Purpose**: Stores poll questions and configuration
 - **Types**: Discrete (multiple choice) and Continuous (slider)
-- **Key Fields**: `question`, `isContinuous`, `selectionType`, `visibility`
-- **Features**: Expiration, media support, visibility control
+- **Key Fields**: `question`, `isContinuous`, `selectionType`, `visibility`, `privateLinkToken`
+- **Features**: Expiration, media support, visibility control, private link sharing
 
 #### PollOption
 - **Purpose**: Options for discrete polls
@@ -33,16 +33,17 @@ The database layer follows a clean architecture with:
 
 #### Vote
 - **Purpose**: User responses to discrete polls
-- **Key Fields**: `pollId`, `voterId`, `optionId`
-- **Features**: Prevents duplicate votes per user/option
+- **Key Fields**: `pollId`, `voterId`, `optionId`, `isHidden`, `isSharedPublicly`, `publicComment`, `flipFlopCount`
+- **Features**: Prevents duplicate votes per user/option, vote visibility controls, public sharing, flip-flop tracking
 
 #### SliderResponse
 - **Purpose**: User responses to continuous polls
-- **Key Fields**: `value`, `pollId`, `userId`
-- **Features**: Numeric responses, one per user per poll
+- **Key Fields**: `value`, `pollId`, `userId`, `isHidden`, `isSharedPublicly`, `publicComment`, `flipFlopCount`
+- **Features**: Numeric responses, one per user per poll, vote visibility controls, public sharing, flip-flop tracking
 
 #### Social Graph Models
-- **Follow**: Accepted follow relationships
+- **Follow**: Accepted follow relationships (mutual follows = friends)
+- **FollowRequest**: Pending follow requests for private accounts
 - **Block**: Block relationships (removes follows)
 - **Mute**: Mute relationships (hides content)
 - **SkippedPoll**: Tracks polls user has skipped
@@ -50,13 +51,18 @@ The database layer follows a clean architecture with:
 ### Enums
 
 #### PollVisibility
-- `PUBLIC`: Anyone can see
-- `FOLLOWERS`: Only followers can see
-- `MUTUALS`: Only mutual followers can see
+- `PUBLIC`: Anyone can view and vote
+- `FRIENDS_ONLY`: Only mutual follows (friends) can view and vote
+- `PRIVATE_LINK`: Only those with the link can view and vote
 
 #### SelectionType
 - `SINGLE`: Pick one option
 - `MULTIPLE`: Pick multiple options (up to `maxSelections`)
+
+#### FollowRequestStatus
+- `PENDING`: Awaiting response from private account owner
+- `ACCEPTED`: Request accepted, follow relationship created
+- `REJECTED`: Request rejected by private account owner
 
 ## 🏛️ Repository Layer
 
@@ -112,6 +118,13 @@ follow(data: FollowData): Promise<Follow>
 unfollow(followerId: string, followeeId: string): Promise<void>
 isFollowing(followerId: string, followeeId: string): Promise<boolean>
 getMutualFollows(userId1: string, userId2: string): Promise<{...}>
+
+// Follow request operations (for private accounts)
+createFollowRequest(data: FollowRequestData): Promise<FollowRequest>
+acceptFollowRequest(followerId: string, followeeId: string): Promise<Follow>
+rejectFollowRequest(followerId: string, followeeId: string): Promise<void>
+getFollowRequest(followerId: string, followeeId: string): Promise<FollowRequest | null>
+getPendingFollowRequests(userId: string, cursor?: string, limit?: number): Promise<FollowRequest[]>
 
 // Block operations
 block(data: BlockData): Promise<Block>
@@ -171,7 +184,7 @@ const user = await userRepository.create({
 ```typescript
 import { pollRepository } from './src/db/index.js';
 
-// Discrete poll
+// Discrete poll (public)
 const discretePoll = await pollRepository.create({
   ownerId: userId,
   question: 'What\'s your favorite color?',
@@ -185,7 +198,7 @@ const discretePoll = await pollRepository.create({
   ],
 });
 
-// Continuous poll
+// Continuous poll (friends only)
 const continuousPoll = await pollRepository.create({
   ownerId: userId,
   question: 'Rate your satisfaction (1-10)',
@@ -193,7 +206,21 @@ const continuousPoll = await pollRepository.create({
   minValue: 1,
   maxValue: 10,
   step: 1,
-  visibility: 'PUBLIC',
+  visibility: 'FRIENDS_ONLY',
+});
+
+// Private link poll
+const privatePoll = await pollRepository.create({
+  ownerId: userId,
+  question: 'Private question',
+  isContinuous: false,
+  selectionType: 'SINGLE',
+  visibility: 'PRIVATE_LINK',
+  privateLinkToken: generateUniqueToken(), // Generate secure token
+  options: [
+    { text: 'Option 1', position: 1 },
+    { text: 'Option 2', position: 2 },
+  ],
 });
 ```
 
@@ -201,18 +228,30 @@ const continuousPoll = await pollRepository.create({
 ```typescript
 import { socialRepository } from './src/db/index.js';
 
-// Follow a user
+// Follow a public account (direct)
 await socialRepository.follow({
   followerId: currentUserId,
   followeeId: targetUserId,
 });
+
+// Request to follow a private account
+await socialRepository.createFollowRequest({
+  followerId: currentUserId,
+  followeeId: privateAccountUserId,
+});
+
+// Accept a follow request (private account owner)
+await socialRepository.acceptFollowRequest(
+  followerId,
+  currentUserId // private account owner
+);
 
 // Check relationship status
 const status = await socialRepository.getRelationshipStatus(
   currentUserId, 
   targetUserId
 );
-console.log(status); // { following: true, followedBy: false, ... }
+console.log(status); // { following: true, followedBy: false, areMutuals: false, ... }
 ```
 
 ### Voting
@@ -222,8 +261,19 @@ import { pollRepository } from './src/db/index.js';
 // Vote on discrete poll
 await pollRepository.vote(pollId, userId, optionId);
 
+// Vote with visibility controls
+const vote = await pollRepository.vote(pollId, userId, optionId);
+await pollRepository.updateVote(vote.id, {
+  isSharedPublicly: true,
+  publicComment: 'This is my pick!',
+});
+
 // Submit slider response
 await pollRepository.submitSliderResponse(pollId, userId, 7.5);
+
+// Change vote (increments flipFlopCount)
+await pollRepository.removeVote(pollId, userId, oldOptionId);
+await pollRepository.vote(pollId, userId, newOptionId); // flipFlopCount auto-increments
 ```
 
 ## 🚀 Performance Features
@@ -292,11 +342,20 @@ npx prisma migrate reset
 
 1. **Complete Social Polling System**: Discrete and continuous polls with full voting functionality
 2. **Robust Social Graph**: Follow/block/mute relationships with proper constraints
-3. **Flexible Visibility**: Public, followers-only, and mutuals-only content
-4. **Type Safety**: Full TypeScript integration with generated types
-5. **Error Handling**: Comprehensive error mapping and domain-specific errors
-6. **Performance**: Optimized queries, indexes, and cursor pagination
-7. **Data Integrity**: Proper constraints, cascading deletes, and validation
-8. **Extensibility**: Clean architecture allowing easy feature additions
+3. **Follow Requests**: Support for private accounts with follow request approval flow
+4. **Flexible Visibility**: Public, friends-only, and private link poll modes
+5. **Vote Visibility Controls**: Per-poll and global settings for vote visibility
+6. **Public Vote Sharing**: Users can share votes publicly with optional comments
+7. **Flip-Flop Tracking**: Tracks vote changes for social dynamics
+8. **Type Safety**: Full TypeScript integration with generated types
+9. **Error Handling**: Comprehensive error mapping and domain-specific errors
+10. **Performance**: Optimized queries, indexes, and cursor pagination
+11. **Data Integrity**: Proper constraints, cascading deletes, and validation
+12. **Extensibility**: Clean architecture allowing easy feature additions
+
+## 📚 Related Documentation
+
+- **[README-SOCIAL-DYNAMICS.md](README-SOCIAL-DYNAMICS.md)**: Complete documentation of social and relationship dynamics
+- **[README-AUTHENTICATION.md](README-AUTHENTICATION.md)**: Authentication system documentation
 
 The Spill database layer is now production-ready and provides a solid foundation for building the social polling application! 🚀 

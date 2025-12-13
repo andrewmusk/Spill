@@ -11,7 +11,9 @@ export interface CreateUserData {
 
 export interface UpdateUserData {
   displayName?: string;
+  bio?: string | null;
   isPrivate?: boolean;
+  hideVotesFromFriends?: boolean;
 }
 
 export interface UserWithCounts extends User {
