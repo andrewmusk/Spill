@@ -1,0 +1,290 @@
+---
+description: This rule explains Express.js conventions and best practices for Node.js backend development.
+globs: **/*.js,**/*.ts
+alwaysApply: true
+---
+
+Purpose
+Minimal, enforceable conventions for a maintainable, type‑safe HTTP API.
+
+General
+Target Node ≥18; we **pin to Node 24.x** (currently 24.4.1) in dev and CI. Use ESM or TypeScript consistently.
+
+Keep route files thin; move logic to services. One responsibility per module.
+
+Prefer composition over inheritance; keep helpers pure and side‑effect‑free.
+
+Be explicit with imports, registration, and configuration.
+
+Directory Structure
+/src/config — env parsing, constants
+
+/src/db — Prisma client, repositories
+
+/src/features — feature slices (routes, services, schemas)
+
+Example: /src/features/users/{users.routes.ts, users.schemas.ts, users.service.ts}
+
+/src/http — server wiring (server.ts), error types/mappers (errors.ts), middleware/
+
+/src/lib — shared helpers (time, ids, crypto)
+
+/src/tests — unit/integration tests, test setup (global-setup.js, setup-tests.js), helpers
+
+/prisma — schema.prisma and migrations/
+
+Routes
+One router per feature (e.g., /features/<name>/<name>.routes.ts).
+
+Handlers should be short; delegate business logic to a service.
+
+RESTful naming with plural nouns (e.g., /users, /polls/:id).
+
+Avoid clever dynamic patterns; prefer explicit routes.
+
+Structure (Server Wiring)
+Middleware order:
+
+Early: request‑id, security headers, CORS
+
+Body parsers (json, urlencoded)
+
+Auth/authorization
+
+Feature routers
+
+404 handler
+
+Last: centralized error handler with signature (err, req, res, next)
+
+Request & Response Validation (Zod)
+Define per‑route schemas in <feature>.schemas.ts: ParamsSchema, QuerySchema, BodySchema, optional ResponseSchema.
+
+Use a small validator middleware that safe‑parses inputs and attaches req.validated.
+
+Validation errors should return a structured shape (field, code, message).
+
+Request Pagination
+Prefer cursor‑based pagination.
+
+Inputs: cursor, limit (clamped to a max like 100), optional direction (next/prev).
+
+Cursor uses a stable unique column (id or createdAt+id).
+
+Output includes data and nextCursor.
+
+Response Format
+Success envelope includes:
+
+data: payload
+
+meta.nextCursor: cursor token when applicable
+
+meta.traceId: request/trace correlation id
+
+Error envelope includes:
+
+error.type: e.g., ValidationError, NotFound, Conflict
+
+error.message: readable detail
+
+error.fields: optional per‑field validation issues
+
+meta.traceId: correlation id
+
+Use accurate HTTP status codes.
+
+Documentation
+Keep route schemas near handlers and export for docs generation.
+
+Document error shapes and pagination contract per route.
+
+Add a short README in each feature folder explaining endpoints and invariants.
+
+Error Handling
+Centralized error middleware converts thrown errors (including Zod and Prisma) into the standard error payload.
+
+Do not litter handlers with try/catch—throw typed/domain errors and let the central handler respond.
+
+Map Prisma known request errors:
+
+Unique constraint → 409 Conflict
+
+Not found (when exceptional) → 404 Not Found
+
+Unknown → 500 Internal Server Error
+
+Middleware
+Required: request‑id, JSON parser, auth, centralized error handler.
+
+Optional: rate limiting, CORS, compression where useful.
+
+Error handler is always the last middleware.
+
+Route Registration
+Register routers explicitly in server.ts; avoid auto‑globbing.
+
+Mount feature routers at /api/<feature>.
+
+External Services
+Wrap each external API/SDK in a small client module with:
+
+Explicit timeout
+
+Bounded retries with backoff
+
+Structured error types
+
+Do not call external SDKs directly from route files.
+
+Testing
+Use **Vitest** for all tests. Prefer **integration tests** with a real Postgres (via **Testcontainers**) for repositories/services; use unit tests for pure logic. Use **supertest** for HTTP route tests without opening a real port.
+
+- Runner: Vitest (Node environment, globals on)
+- DB: Start Postgres 15 via Testcontainers in `global-setup.js`, set `DATABASE_URL`, then run `prisma migrate deploy` once per run
+- Reset state **between tests** using **TRUNCATE + RESTART IDENTITY** (exclude `_prisma_migrations`)
+- Run DB-backed tests **serially** to avoid shared-state races
+- Avoid per-test transaction rollbacks with Prisma (multiple connections)
+- Keep fixtures minimal; use factory helpers to create the smallest valid rows
+- Silence logs in tests; fail on unhandled rejections
+- No real network calls; mock external HTTP/services
+
+(dev dependencies)
+- vitest, testcontainers, supertest, @vitest/coverage-v8 (coverage)
+
+
+Database Operations (Prisma)
+Single PrismaClient instance reused across the app; guard with globalThis in dev hot‑reload and disconnect on shutdown.
+
+Use $transaction for multi‑step writes to keep invariants atomic.
+
+Prefer findUnique/findFirst with unique constraints; use *OrThrow variants when absence is exceptional.
+
+Limit payloads with select/include as needed; avoid over‑fetching.
+
+Handle P2002 (unique violation) and foreign‑key errors in the error mapper.
+
+Use cursor pagination for large lists; add indexes for cursor columns.
+
+Other General Rules
+Keep functions small and predictable; prefer pure helpers.
+
+Never leak DB/raw errors to clients; map to domain/HTTP errors first.
+
+Avoid wildcard exports; export explicit APIs from feature folders.
+
+Logging
+Use a structured JSON logger (e.g., Pino or equivalent).
+
+Inject traceId on every log line; log at boundaries (request start/end, external calls, DB errors).
+
+Do not log sensitive data (tokens, passwords, secrets).
+
+Naming Conventions
+Files: kebab‑case
+
+Types/Interfaces: PascalCase
+
+Variables/functions: camelCase
+
+Route files end with .routes.ts; services with .service.ts; middleware lives in /http/middleware.
+
+Async Operations
+Prefer async/await and return awaited values in middlewares/handlers.
+
+Centralize unhandled rejection and uncaught exception listeners.
+
+On SIGTERM/SIGINT: stop accepting new requests, finish in‑flight, then disconnect Prisma and close the server.
+
+Environment Variables
+Parse once at startup with a Zod schema (env.ts) and export a typed env object.
+
+Do not read process.env outside /src/config.
+
+Store secrets in a secret manager; use .env for local dev only.
+
+Separate build‑time vs runtime variables when applicable.
+
+# Vitest Rules (Backend)
+
+## Purpose
+Use Vitest to test backend logic, routes, and database access with **deterministic**, **hermetic**, and **fast** tests. Prefer real Postgres via Testcontainers for integration/e2e; use simple unit tests for pure logic.
+
+## Packages (dev)
+- vitest
+- testcontainers
+- supertest            # HTTP testing against Express app without a real network port
+- @types/supertest     # if using TypeScript
+- @vitest/coverage-v8  # coverage provider (if not bundled with your Vitest version)
+
+## Directory & Naming
+- Place tests next to source files or under `test/` (consistent across the repo).
+- Name files `*.test.ts` / `*.test.js` or `*.spec.ts` / `*.spec.js`.
+- Prefer one concern per test file (unit vs integration vs e2e).
+
+## Config (vitest.config)
+- Use Node environment and Vitest globals.
+- Provide both `globalSetup` (start Postgres container, run migrations) and `setupFiles` (truncate DB between tests, common hooks).
+- For DB-backed tests, run **serially** to avoid shared-state races:
+  - Set `maxThreads: 1` and `minThreads: 1` in `test` config for the DB suite, or group DB tests into a separate command.
+
+## Database Testing Strategy
+- **Integration/E2E**: Spin up **Postgres 15** with Testcontainers per test run.
+  - Export `DATABASE_URL` from the container’s connection URI in `globalSetup`.
+  - Run `prisma migrate deploy` against the container before tests begin.
+  - In `beforeEach`, **truncate** all user tables (exclude `_prisma_migrations`) and `RESTART IDENTITY`.
+  - Disconnect Prisma in `afterAll`.
+- **Unit**: For code that doesn’t need the DB, **do not** touch Prisma. Mock repositories/services as needed.
+- Optional: For “DB‑like” in-memory unit tests, `pg-mem` is acceptable, but final behavior must be validated with real Postgres integration tests.
+
+## Express Route Tests
+- Build an app factory `createApp({ prisma, logger, ...deps })` so tests can import the app without starting a server.
+- Use **supertest** to call routes (no actual network port).
+- Validate both request **and** response against your Zod schemas where practical.
+
+## Determinism
+- Freeze time with `vi.useFakeTimers()` / `vi.setSystemTime(...)` for time‑based behavior.
+- Mock randomness (`Math.random`, UUID generators) when used in logic you assert on.
+- Avoid relying on record insertion order; always assert on stable keys/IDs.
+
+## Logging & Noise
+- In tests, set your logger to **silent** (e.g., Pino level `"silent"`).
+- Make tests fail on **unhandled rejections** and **console.error** unless explicitly expected.
+
+## External HTTP & Side Effects
+- Do **not** hit the network. Mock:
+  - HTTP: use `undici`’s `MockAgent` (preferred) or `nock`.
+  - Email/push/storage: provide lightweight in‑memory fakes.
+- For queues/cron, expose handlers and test them directly with fakes.
+
+## Coverage
+- Use V8 coverage; require thresholds that reflect your goals (e.g., 80% lines/branches).
+- Cover critical paths (authn/z, input validation, DB writes, pagination, error handling).
+
+## CI Guidance
+- Ensure Docker is available for Testcontainers (GitHub Actions: use `services` or `--privileged` runner).
+- Run `vitest --run` (no watch). Cache `node_modules` and `.prisma` as needed.
+- Persist coverage reports (`lcov`).
+
+## Useful Defaults (JS)
+Add a minimal config and scripts. Keep examples small.
+
+Vitest config (defaults)
+Use these defaults in `vitest.config.js`:
+
+```js
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    globals: true,
+    // Paths since tests live under /src/tests
+    globalSetup: ['./src/tests/global-setup.js'],
+    setupFiles: ['./src/tests/setup-tests.js'],
+    coverage: { provider: 'v8', reporter: ['text', 'lcov'] },
+    maxThreads: 1, // serialize DB tests
+    minThreads: 1,
+    testTimeout: 60000 // allow container startup + migrations
+  },
+});

@@ -14,9 +14,239 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Enums
+enum PollVisibility {
+  PUBLIC       // anyone can view and vote
+  FRIENDS_ONLY // only mutual follows (friends) can view and vote
+  PRIVATE_LINK // only those with the link can view and vote
+}
+
+enum SelectionType {
+  SINGLE      // pick one option
+  MULTIPLE    // pick N options (maxSelections)
+}
+
+enum FollowRequestStatus {
+  PENDING   // awaiting response
+  ACCEPTED  // request accepted, follow created
+  REJECTED  // request rejected
+}
+
+// User Model
 model User {
-  id          BigInt   @id @default(autoincrement())
-  handle      String   @unique
-  displayName String?
-  createdAt   DateTime @default(now())
+  id                   String   @id @default(cuid())
+  clerkId              String   @unique // Clerk user identifier for authentication
+  handle               String   @unique
+  displayName          String?
+  bio                  String?  // Bio for profile About section
+  isPrivate            Boolean  @default(false)
+  hideVotesFromFriends Boolean  @default(false) // Global setting to hide all votes from friends
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Owned polls
+  polls Poll[]
+
+  // Voting relationships
+  votes           Vote[]
+  sliderResponses SliderResponse[]
+  skippedPolls    SkippedPoll[]
+
+  // Social graph - following relationships
+  followers Follow[] @relation("UserFollows")
+  following Follow[] @relation("UserFollowing")
+
+  // Social graph - follow requests (for private accounts)
+  followRequestsSent     FollowRequest[] @relation("UserFollowRequestsSent")
+  followRequestsReceived FollowRequest[] @relation("UserFollowRequestsReceived")
+
+  // Social graph - blocking relationships
+  blockers Block[] @relation("UserBlocks")
+  blocked  Block[] @relation("UserBlocked")
+
+  // Social graph - muting relationships
+  muters Mute[] @relation("UserMutes")
+  muted  Mute[] @relation("UserMuted")
+}
+
+// Poll Model
+model Poll {
+  id               String          @id @default(cuid())
+  ownerId          String
+  question         String
+  isContinuous     Boolean         @default(false)
+  selectionType    SelectionType?  // only for discrete polls
+  maxSelections    Int?            // multi-select limit
+  minValue         Float?          // continuous polls
+  maxValue         Float?
+  step             Float?
+  visibility       PollVisibility  @default(PUBLIC)
+  privateLinkToken String?          @unique // Unique token for private link polls
+  expiresAt        DateTime?
+  mediaUrls        String[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Relationships
+  owner           User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  options         PollOption[]
+  votes           Vote[]
+  sliderResponses SliderResponse[]
+  skippedBy       SkippedPoll[]
+
+  // Indexes for performance
+  @@index([ownerId])
+  @@index([visibility])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([privateLinkToken])
+}
+
+// Poll Options (for discrete polls)
+model PollOption {
+  id       String @id @default(cuid())
+  pollId   String
+  text     String
+  position Int
+
+  // Relationships
+  poll  Poll   @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes Vote[]
+
+  @@index([pollId])
+  @@index([pollId, position])
+}
+
+// Votes (for discrete polls)
+model Vote {
+  id              String   @id @default(cuid())
+  pollId          String
+  voterId         String
+  optionId        String
+  isHidden        Boolean  @default(false) // Hide vote for this specific poll
+  isSharedPublicly Boolean @default(false) // Share vote publicly on profile/feed
+  publicComment   String?  // Optional comment when sharing publicly
+  flipFlopCount   Int      @default(0) // Track number of vote changes
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt // Track when vote was last changed
+
+  // Relationships
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  voter  User       @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  // Constraints and indexes
+  @@unique([pollId, voterId, optionId])
+  @@index([pollId])
+  @@index([voterId])
+  @@index([optionId])
+  @@index([isSharedPublicly])
+}
+
+// Slider Responses (for continuous polls)
+model SliderResponse {
+  id              String   @id @default(cuid())
+  pollId          String
+  userId          String
+  value           Float
+  isHidden        Boolean  @default(false) // Hide response for this specific poll
+  isSharedPublicly Boolean @default(false) // Share response publicly on profile/feed
+  publicComment   String?  // Optional comment when sharing publicly
+  flipFlopCount   Int      @default(0) // Track number of response changes
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt // Track when response was last changed
+
+  // Relationships
+  poll Poll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Constraints and indexes
+  @@unique([pollId, userId])
+  @@index([pollId])
+  @@index([userId])
+  @@index([isSharedPublicly])
+}
+
+// Skipped Polls (to avoid showing the same poll again)
+model SkippedPoll {
+  id        String   @id @default(cuid())
+  userId    String
+  pollId    String
+  createdAt DateTime @default(now())
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  poll Poll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  // Constraints and indexes
+  @@unique([userId, pollId])
+  @@index([userId])
+  @@index([pollId])
+}
+
+// Social Graph - Follow relationships (accepted follows only)
+model Follow {
+  followerId String
+  followeeId String
+  createdAt  DateTime @default(now())
+
+  // Relationships
+  follower User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  followee User @relation("UserFollows", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  // Composite primary key
+  @@id([followerId, followeeId])
+  @@index([followerId])
+  @@index([followeeId])
+}
+
+// Social Graph - Block relationships
+model Block {
+  blockerId String
+  blockedId String
+  blockedAt DateTime @default(now())
+
+  // Relationships
+  blocker User @relation("UserBlocked", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("UserBlocks", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  // Composite primary key
+  @@id([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+}
+
+// Social Graph - Mute relationships
+model Mute {
+  muterId String
+  mutedId String
+  mutedAt DateTime @default(now())
+
+  // Relationships
+  muter User @relation("UserMuted", fields: [muterId], references: [id], onDelete: Cascade)
+  muted User @relation("UserMutes", fields: [mutedId], references: [id], onDelete: Cascade)
+
+  // Composite primary key
+  @@id([muterId, mutedId])
+  @@index([muterId])
+  @@index([mutedId])
+}
+
+// Social Graph - Follow Request relationships (for private accounts)
+model FollowRequest {
+  followerId  String              // User requesting to follow
+  followeeId  String              // User being followed (private account)
+  status      FollowRequestStatus @default(PENDING)
+  createdAt   DateTime            @default(now())
+  respondedAt DateTime?           // When the request was accepted/rejected
+
+  // Relationships
+  follower User @relation("UserFollowRequestsSent", fields: [followerId], references: [id], onDelete: Cascade)
+  followee User @relation("UserFollowRequestsReceived", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  // Composite primary key
+  @@id([followerId, followeeId])
+  @@index([followerId])
+  @@index([followeeId])
+  @@index([status])
 }
