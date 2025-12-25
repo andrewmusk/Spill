@@ -8,11 +8,11 @@ import { clerkAuth } from './http/middleware/auth.middleware.js';
 import { requestLogging } from './http/middleware/logging.middleware.js';
 import { corsMiddleware } from './http/middleware/cors.middleware.js';
 import { requireAdmin } from './http/middleware/admin.middleware.js';
-import { healthRoutes } from './features/health/health.routes.js';
+import { healthRoutes } from './routes/health.routes.js';
 import { monitoringRoutes } from './features/health/monitoring.routes.js';
-import { authRoutes } from './features/auth/auth.routes.js';
-import { userRoutes } from './features/users/users.routes.js';
-import { adminRoutes } from './features/admin/admin.routes.js';
+import { authRoutes } from './routes/auth.routes.js';
+import { userRoutes } from './routes/user.routes.js';
+import { adminRoutes } from './routes/admin.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

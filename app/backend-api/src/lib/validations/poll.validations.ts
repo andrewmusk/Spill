@@ -1,5 +1,5 @@
-import { ValidationError } from '../../db/errors.js';
-import type { CreatePollData } from '../../db/index.js';
+import { ValidationError } from '../db/errors.js';
+import type { CreatePollData } from '../repos/poll.repository.js';
 
 /**
  * Poll validation functions
