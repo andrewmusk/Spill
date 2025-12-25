@@ -2,14 +2,16 @@
 CREATE TYPE "FollowRequestStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED');
 
 -- Update PollVisibility enum
--- First, add new enum values
--- Note: IF NOT EXISTS is not supported in all PostgreSQL versions, but these values are new
-ALTER TYPE "PollVisibility" ADD VALUE 'FRIENDS_ONLY';
-ALTER TYPE "PollVisibility" ADD VALUE 'PRIVATE_LINK';
+-- Add new enum values
+-- Note: For existing databases with data, you may need to run these ALTER TYPE statements
+-- in a separate transaction before running this migration, or manually update data afterward
+ALTER TYPE "PollVisibility" ADD VALUE IF NOT EXISTS 'FRIENDS_ONLY';
+ALTER TYPE "PollVisibility" ADD VALUE IF NOT EXISTS 'PRIVATE_LINK';
 
--- Migrate existing data: map FOLLOWERS and MUTUALS to FRIENDS_ONLY (closest equivalent)
-UPDATE "Poll" SET "visibility" = 'FRIENDS_ONLY' WHERE "visibility" = 'FOLLOWERS';
-UPDATE "Poll" SET "visibility" = 'FRIENDS_ONLY' WHERE "visibility" = 'MUTUALS';
+-- Note: We cannot update existing data in the same transaction as adding enum values
+-- If you have existing data with FOLLOWERS or MUTUALS values, update them separately:
+-- UPDATE "Poll" SET "visibility" = 'FRIENDS_ONLY' WHERE "visibility" = 'FOLLOWERS';
+-- UPDATE "Poll" SET "visibility" = 'FRIENDS_ONLY' WHERE "visibility" = 'MUTUALS';
 
 -- Note: We cannot directly remove enum values in PostgreSQL without recreating the enum.
 -- The old values (FOLLOWERS, MUTUALS) will remain in the enum type but won't be used.

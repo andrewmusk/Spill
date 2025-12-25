@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clerk Auth Test</title>
+    <script
+      async
+      crossorigin="anonymous"
+      data-clerk-publishable-key="pk_test_ZGVzaXJlZC1zdGluZ3JheS05OS5jbGVyay5hY2NvdW50cy5kZXYk"
+      src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+    ></script>
+    <style>
+      body { font-family: system-ui; padding: 24px; }
+      #token { word-break: break-all; background: #f6f6f6; padding: 12px; border-radius: 8px; }
+      button { padding: 10px 14px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Clerk JS Test</h1>
+    <div id="app">Loading…</div>
+
+    <h3>Session token</h3>
+    <div id="token">(sign in to generate)</div>
+
+    <button id="callApi" disabled>Call API</button>
+    <pre id="apiResult"></pre>
+
+    <script>
+      window.addEventListener("load", async () => {
+        // Wait for the Clerk script to load
+        while (!window.Clerk) await new Promise(r => setTimeout(r, 50));
+
+        const clerk = window.Clerk;
+        await clerk.load();
+
+        const app = document.getElementById("app");
+        const tokenEl = document.getElementById("token");
+        const callApiBtn = document.getElementById("callApi");
+        const apiResult = document.getElementById("apiResult");
+
+        if (!clerk.user) {
+          app.innerHTML = `<div id="sign-in"></div>`;
+          clerk.mountSignIn(document.getElementById("sign-in"));
+          return;
+        }
+
+        app.innerHTML = `
+          <p>Signed in as <b>${clerk.user.primaryEmailAddress?.emailAddress ?? clerk.user.id}</b></p>
+          <div id="user-button"></div>
+        `;
+        clerk.mountUserButton(document.getElementById("user-button"));
+
+        // Grab a JWT for your backend (the important part)
+        const token = await clerk.session.getToken();
+        tokenEl.textContent = token;
+        callApiBtn.disabled = false;
+
+        callApiBtn.onclick = async () => {
+          apiResult.textContent = "Calling API…";
+          const res = await fetch("http://localhost:3000/api/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          apiResult.textContent = await res.text();
+        };
+      });
+    </script>
+  </body>
+</html>
