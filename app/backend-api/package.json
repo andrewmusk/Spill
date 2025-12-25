@@ -16,13 +16,18 @@
         "test:health": "vitest run src/tests/health/",
         "test:validations": "vitest run src/tests/validations/",
         "test:integration": "vitest run src/tests/auth/auth.integration.test.ts",
-        "test:production": "npm run test:security && npm run test:performance && npm run test:health"
+        "test:production": "npm run test:security && npm run test:performance && npm run test:health",
+        "golden-path": "tsx scripts/golden-path.js",
+        "verify-admin-setup": "tsx scripts/verify-admin-setup.js",
+        "setup-admin-env": "tsx scripts/setup-admin-env.js",
+        "seed": "tsx prisma/seed.js"
     },
     "dependencies": {
         "@clerk/express": "^1.7.14",
+        "@clerk/nextjs": "^6.36.2",
         "@google-cloud/cloud-sql-connector": "^1.8.2",
         "@prisma/client": "^6.12.0",
-        "dotenv": "^17.2.1",
+        "dotenv": "^17.2.3",
         "express": "^4.19.2",
         "pg": "^8.11.3",
         "pino": "^9.7.0",

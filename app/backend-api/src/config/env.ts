@@ -16,6 +16,10 @@ const envSchema = z.object({
   // Server
   PORT: z.string().default('8080').transform(val => parseInt(val, 10)),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  
+  // Admin
+  CLERK_ADMIN_USER_IDS: z.string().optional(), // Comma-separated Clerk user IDs
+  COMMIT_SHA: z.string().optional(), // Git commit SHA (set in CI/deployment)
 });
 
 const parseResult = envSchema.safeParse(process.env);

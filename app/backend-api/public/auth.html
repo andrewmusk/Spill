@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Auth</title>
+
+    <script
+      async
+      crossorigin="anonymous"
+      data-clerk-publishable-key="__CLERK_PUBLISHABLE_KEY__"
+      src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+    ></script>
+    <style>
+      body { font-family: system-ui; padding: 24px; max-width: 900px; margin: 0 auto; }
+      #token { word-break: break-all; background: #f6f6f6; padding: 12px; border-radius: 8px; }
+      button { padding: 10px 14px; border-radius: 8px; margin-top: 12px; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      pre { background: #f6f6f6; padding: 12px; border-radius: 8px; overflow-x: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>Sign in</h1>
+    <div id="app">Loading…</div>
+
+    <h3>JWT (for debugging)</h3>
+    <div id="token">(sign in to generate)</div>
+
+    <button id="callApi" disabled>Call /api/auth/me</button>
+    <pre id="apiResult"></pre>
+
+    <script>
+      window.addEventListener("load", async () => {
+        while (!window.Clerk) await new Promise(r => setTimeout(r, 50));
+        const clerk = window.Clerk;
+        await clerk.load();
+
+        const app = document.getElementById("app");
+        const tokenEl = document.getElementById("token");
+        const callApiBtn = document.getElementById("callApi");
+        const apiResult = document.getElementById("apiResult");
+
+        if (!clerk.user) {
+          app.innerHTML = `<div id="sign-in"></div>`;
+          clerk.mountSignIn(document.getElementById("sign-in"));
+          return;
+        }
+
+        app.innerHTML = `<div id="user-button"></div>`;
+        clerk.mountUserButton(document.getElementById("user-button"));
+
+        const token = await clerk.session.getToken();
+        tokenEl.textContent = token;
+
+        callApiBtn.disabled = false;
+        callApiBtn.onclick = async () => {
+          apiResult.textContent = "Calling…";
+          const res = await fetch("/api/auth/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          apiResult.textContent = await res.text();
+        };
+      });
+    </script>
+  </body>
+</html>
