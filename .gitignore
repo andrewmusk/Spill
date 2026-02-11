@@ -12,3 +12,10 @@ __pycache__/
 # Node/Frontend (if added later)
 node_modules/
 dist/
+
+# MultiClaude (auto-added)
+.claude-home/
+.claude-context/
+.claude-images/
+.mcp.json
+.agent-worktrees/
