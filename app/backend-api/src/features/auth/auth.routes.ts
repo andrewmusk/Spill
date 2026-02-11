@@ -23,7 +23,7 @@ router.get('/me', async (req, res, next) => {
       });
     }
 
-    res.json({
+    return res.json({
       data: {
         user: {
           id: req.user.id,
@@ -39,7 +39,7 @@ router.get('/me', async (req, res, next) => {
     });
   } catch (error) {
     console.error('Failed to get current user:', error);
-    next(error);
+    return next(error);
   }
 });
 
@@ -60,9 +60,7 @@ router.patch('/me', async (req, res, next) => {
 
     // For now, only allow updating displayName and privacy
     const { displayName, isPrivate } = req.body;
-    
-    // TODO: Add Zod validation here
-    
+
     const updatedUser = await prisma.user.update({
       where: { id: req.user.id },
       data: {
@@ -72,7 +70,7 @@ router.patch('/me', async (req, res, next) => {
       },
     });
 
-    res.json({
+    return res.json({
       data: {
         user: {
           id: updatedUser.id,
@@ -89,7 +87,7 @@ router.patch('/me', async (req, res, next) => {
     });
   } catch (error) {
     console.error('Failed to update user profile:', error);
-    next(error);
+    return next(error);
   }
 });
 
@@ -110,7 +108,7 @@ router.post('/sync', async (req, res, next) => {
 
     const updatedUser = await userService.updateUserFromClerk(req.user.clerkId);
 
-    res.json({
+    return res.json({
       data: {
         user: {
           id: updatedUser.id,
@@ -128,8 +126,8 @@ router.post('/sync', async (req, res, next) => {
     });
   } catch (error) {
     console.error('Failed to sync user profile:', error);
-    next(error);
+    return next(error);
   }
 });
 
-export { router as authRoutes }; 
+export { router as authRoutes };

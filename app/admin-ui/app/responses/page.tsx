@@ -34,8 +34,8 @@ export default function ResponsesPage() {
       key: 'user',
       label: 'User',
       render: (item) => {
-        if ('voter' in item) return item.voter?.handle || item.voterId;
-        return item.user?.handle || item.userId;
+        if ('voter' in item) return (item as any).voter?.handle || item.voterId;
+        return (item as any).user?.handle || (item as SliderResponse).userId;
       },
     },
     {

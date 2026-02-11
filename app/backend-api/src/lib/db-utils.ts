@@ -38,7 +38,7 @@ export function createPaginatedResult<T extends { id: string }>(
 ): PaginatedResult<T> {
   const hasMore = data.length > requestedLimit;
   const items = hasMore ? data.slice(0, -1) : data;
-  const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;
+  const nextCursor = hasMore && items.length > 0 ? items[items.length - 1]!.id : null;
 
   return {
     data: items,

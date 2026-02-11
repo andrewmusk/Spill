@@ -112,7 +112,7 @@ export class AdminService {
 
     const hasMore = users.length > limit;
     const data = hasMore ? users.slice(0, limit) : users;
-    const nextCursor = hasMore ? data[data.length - 1].id : undefined;
+    const nextCursor = hasMore ? data[data.length - 1]!.id : undefined;
 
     return {
       data,
@@ -254,7 +254,7 @@ export class AdminService {
 
     const hasMore = polls.length > limit;
     const data = hasMore ? polls.slice(0, limit) : polls;
-    const nextCursor = hasMore ? data[data.length - 1].id : undefined;
+    const nextCursor = hasMore ? data[data.length - 1]!.id : undefined;
 
     return {
       data,
@@ -386,7 +386,7 @@ export class AdminService {
 
       const hasMore = responses.length > limit;
       const data = hasMore ? responses.slice(0, limit) : responses;
-      const nextCursor = hasMore ? data[data.length - 1].id : undefined;
+      const nextCursor = hasMore ? data[data.length - 1]!.id : undefined;
 
       return {
         data,
@@ -423,7 +423,7 @@ export class AdminService {
 
       const hasMore = votes.length > limit;
       const data = hasMore ? votes.slice(0, limit) : votes;
-      const nextCursor = hasMore ? data[data.length - 1].id : undefined;
+      const nextCursor = hasMore ? data[data.length - 1]!.id : undefined;
 
       return {
         data,
@@ -520,7 +520,7 @@ export class AdminService {
 
     const hasMore = allResponses.length > limit;
     const data = hasMore ? allResponses.slice(0, limit) : allResponses;
-    const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : undefined;
+    const nextCursor = hasMore && data.length > 0 ? data[data.length - 1]!.id : undefined;
 
     return {
       data,

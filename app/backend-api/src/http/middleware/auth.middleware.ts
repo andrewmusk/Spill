@@ -12,8 +12,10 @@ declare global {
         id: string;
         clerkId: string;
         handle: string;
-        displayName?: string;
+        displayName?: string | null;
+        bio?: string | null;
         isPrivate: boolean;
+        hideVotesFromFriends?: boolean;
         createdAt: Date;
         updatedAt: Date;
       };
@@ -33,9 +35,9 @@ export const requireAuthentication = () => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const auth = getAuth(req);
-      
+
       if (!auth?.userId) {
-        return res.status(401).json({
+        res.status(401).json({
           error: {
             type: 'UNAUTHORIZED',
             message: 'Authentication required',
@@ -44,20 +46,21 @@ export const requireAuthentication = () => {
             traceId: req.headers['x-request-id'] || 'unknown',
           },
         });
+        return;
       }
 
       // Get or create user in our database
       const user = await userService.getOrCreateUser(auth.userId);
-      
+
       // Attach user to request
       req.user = user;
-      
+
       next();
     } catch (error) {
       console.error('Authentication middleware error:', error);
-      
+
       if (error instanceof AuthenticationError) {
-        return res.status(error.statusCode).json({
+        res.status(error.statusCode).json({
           error: {
             type: error.type,
             message: error.message,
@@ -66,9 +69,10 @@ export const requireAuthentication = () => {
             traceId: req.headers['x-request-id'] || 'unknown',
           },
         });
+        return;
       }
-      
-      return res.status(500).json({
+
+      res.status(500).json({
         error: {
           type: 'INTERNAL_ERROR',
           message: 'Authentication failed',
@@ -88,13 +92,13 @@ export const optionalAuthentication = () => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const auth = getAuth(req);
-      
+
       if (auth?.userId) {
         // Get or create user in our database
         const user = await userService.getOrCreateUser(auth.userId);
         req.user = user;
       }
-      
+
       next();
     } catch (error) {
       console.error('Optional authentication middleware error:', error);
@@ -102,4 +106,4 @@ export const optionalAuthentication = () => {
       next();
     }
   };
-}; 
+};

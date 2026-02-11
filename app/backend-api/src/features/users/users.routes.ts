@@ -60,7 +60,7 @@ router.get('/:handle', optionalAuthentication(), async (req, res, next) => {
       });
     }
 
-    res.json({
+    return res.json({
       data: {
         user: {
           id: user.id,
@@ -81,7 +81,7 @@ router.get('/:handle', optionalAuthentication(), async (req, res, next) => {
     });
   } catch (error) {
     console.error('Failed to get user profile:', error);
-    next(error);
+    return next(error);
   }
 });
 
@@ -130,9 +130,9 @@ router.get('/', requireAuthentication(), async (req, res, next) => {
 
     const hasMore = users.length > searchLimit;
     const resultUsers = hasMore ? users.slice(0, searchLimit) : users;
-    const nextCursor = hasMore ? users[searchLimit].id : null;
+    const nextCursor = hasMore ? users[searchLimit]!.id : null;
 
-    res.json({
+    return res.json({
       data: {
         users: resultUsers,
       },
@@ -143,7 +143,7 @@ router.get('/', requireAuthentication(), async (req, res, next) => {
     });
   } catch (error) {
     console.error('Failed to search users:', error);
-    next(error);
+    return next(error);
   }
 });
 

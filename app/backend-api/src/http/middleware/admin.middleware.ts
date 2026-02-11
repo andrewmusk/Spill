@@ -9,7 +9,7 @@ import { env } from '../../config/env.js';
 export const requireAdmin = () => {
   // First apply authentication
   const authMiddleware = requireAuthentication();
-  
+
   return async (req: Request, res: Response, next: NextFunction) => {
     // Run authentication middleware first
     let authPassed = false;
@@ -28,10 +28,10 @@ export const requireAdmin = () => {
 
     // Check if user is admin
     const adminUserIds = env.CLERK_ADMIN_USER_IDS?.split(',').map(id => id.trim()).filter(Boolean) || [];
-    
+
     if (adminUserIds.length === 0) {
-      console.warn('⚠️  CLERK_ADMIN_USER_IDS not configured - admin access disabled');
-      return res.status(403).json({
+      console.warn('CLERK_ADMIN_USER_IDS not configured - admin access disabled');
+      res.status(403).json({
         error: {
           type: 'FORBIDDEN',
           message: 'Admin access not configured',
@@ -40,10 +40,11 @@ export const requireAdmin = () => {
           traceId: req.headers['x-request-id'] || 'unknown',
         },
       });
+      return;
     }
 
     if (!adminUserIds.includes(req.user.clerkId)) {
-      return res.status(403).json({
+      res.status(403).json({
         error: {
           type: 'FORBIDDEN',
           message: 'Admin access required',
@@ -52,6 +53,7 @@ export const requireAdmin = () => {
           traceId: req.headers['x-request-id'] || 'unknown',
         },
       });
+      return;
     }
 
     // User is admin, proceed

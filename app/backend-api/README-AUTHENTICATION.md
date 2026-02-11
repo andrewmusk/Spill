@@ -19,9 +19,6 @@ DB_USER=spill_app
 DB_PASS=devpass
 DB_NAME=spill_dev
 
-# Production only - Google Cloud SQL instance connection
-# INSTANCE_CONNECTION_NAME=project:region:instance
-
 # Clerk Authentication (Required)
 CLERK_PUBLISHABLE_KEY=pk_test_your_publishable_key_here
 CLERK_SECRET_KEY=sk_test_your_secret_key_here

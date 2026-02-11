@@ -4,13 +4,14 @@ import { UserValidations } from '../../lib/validations/user.validations.js';
 import type { User, Prisma } from '../../../generated/prisma';
 
 export interface CreateUserData {
+  clerkId: string;
   handle: string;
-  displayName?: string;
+  displayName?: string | null;
   isPrivate?: boolean;
 }
 
 export interface UpdateUserData {
-  displayName?: string;
+  displayName?: string | null;
   bio?: string | null;
   isPrivate?: boolean;
   hideVotesFromFriends?: boolean;

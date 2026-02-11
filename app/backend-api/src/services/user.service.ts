@@ -107,7 +107,7 @@ export class UserService {
 
     const hasMore = users.length > limit;
     const resultUsers = hasMore ? users.slice(0, limit) : users;
-    const nextCursor = hasMore && resultUsers.length > 0 ? resultUsers[resultUsers.length - 1].id : null;
+    const nextCursor = hasMore && resultUsers.length > 0 ? resultUsers[resultUsers.length - 1]!.id : null;
 
     return {
       data: {

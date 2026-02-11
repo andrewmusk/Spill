@@ -7,8 +7,6 @@ const envSchema = z.object({
   DB_USER: z.string().default('spill_app'),
   DB_PASS: z.string().default('devpass'),
   DB_NAME: z.string().default('spill_dev'),
-  INSTANCE_CONNECTION_NAME: z.string().optional(),
-  
   // Clerk Authentication
   CLERK_PUBLISHABLE_KEY: z.string().min(1, 'Clerk publishable key is required'),
   CLERK_SECRET_KEY: z.string().min(1, 'Clerk secret key is required'),
